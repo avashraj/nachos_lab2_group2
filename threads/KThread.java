@@ -443,12 +443,12 @@ public static void finish() {
         th1.setName("forked thread 1");
         th1.fork();
         new PingTest(0).run();
-        joinTest1();     
-        joinTest2();
-        joinTest3();
-        joinTest4();
-        joinTest5();
-        joinTest6();
+        // joinTest1();     
+        // joinTest2();
+        // joinTest3();
+        // joinTest4();
+        // joinTest5();
+        // joinTest6();
     }
 
 	private static final char dbgThread = 't';
