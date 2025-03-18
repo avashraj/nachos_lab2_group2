@@ -21,6 +21,7 @@ public class Condition2 {
 	 */
 	public Condition2(Lock conditionLock) {
 		this.conditionLock = conditionLock;
+		this.waitQueue = ThreadedKernel.scheduler.newThreadQueue(false);
 	}
 
 	/**
@@ -30,11 +31,18 @@ public class Condition2 {
 	 * reacquire the lock before <tt>sleep()</tt> returns.
 	 */
 	public void sleep() {
-		Lib.assertTrue(conditionLock.isHeldByCurrentThread());
-
-		conditionLock.release();
-
-		conditionLock.acquire();
+        Lib.assertTrue(conditionLock.isHeldByCurrentThread());
+        
+        boolean intStatus = Machine.interrupt().disable();
+        
+        waitQueue.waitForAccess(KThread.currentThread());
+        
+        conditionLock.release();
+        KThread.sleep();
+        
+        Machine.interrupt().restore(intStatus);
+        
+        conditionLock.acquire();
 	}
 
 	/**
@@ -42,7 +50,16 @@ public class Condition2 {
 	 * current thread must hold the associated lock.
 	 */
 	public void wake() {
-		Lib.assertTrue(conditionLock.isHeldByCurrentThread());
+        Lib.assertTrue(conditionLock.isHeldByCurrentThread());
+        
+        boolean intStatus = Machine.interrupt().disable();
+        
+        KThread thread = waitQueue.nextThread();
+        if (thread != null) {
+            thread.ready();
+        }
+        
+        Machine.interrupt().restore(intStatus);
 	}
 
 	/**
@@ -51,6 +68,16 @@ public class Condition2 {
 	 */
 	public void wakeAll() {
 		Lib.assertTrue(conditionLock.isHeldByCurrentThread());
+        
+        boolean intStatus = Machine.interrupt().disable();
+        
+        KThread thread = waitQueue.nextThread();
+        while (thread != null) {
+            thread.ready();
+            thread = waitQueue.nextThread();
+        }
+        
+        Machine.interrupt().restore(intStatus);
 	}
 
         /**
@@ -61,9 +88,10 @@ public class Condition2 {
 	 * associated lock.  The thread will automatically reacquire
 	 * the lock before <tt>sleep()</tt> returns.
 	 */
-    public void sleepFor(long timeout) {
+    public void sleepFor(long timeout) { // Not needed according to TA
 		Lib.assertTrue(conditionLock.isHeldByCurrentThread());
 	}
 
     private Lock conditionLock;
+	private ThreadQueue waitQueue;
 }

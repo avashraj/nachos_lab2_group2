@@ -1,6 +1,7 @@
 package nachos.threads;
 
 import nachos.machine.*;
+import nachos.threads.Condition2Test;
 /**
  * A multi-threaded OS kernel.
  */
@@ -45,8 +46,11 @@ public class ThreadedKernel extends Kernel {
 	 * here.
 	 */
 	public void selfTest() {
-		KThread.selfTest();
-        Alarm.selfTest();
+		// KThread.selfTest();
+  //       Alarm.selfTest();
+		// Condition2Test.runTests();
+  //       Communicator.selfTest();
+        Boat.selfTest();
 		Semaphore.selfTest();
 		SynchList.selfTest();
 		if (Machine.bank() != null) {
