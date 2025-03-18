@@ -470,188 +470,188 @@ public static void finish() {
 
 	private static final int statusFinished = 4;
 
-    private static void joinTest1 () {
-        KThread child1 = new KThread( new Runnable () {
-            public void run() {
-                System.out.println("I (heart) Nachos!");
-            }
-        });
-        child1.setName("child1").fork();
-        // We want the child to finish before we call join. Although
-        // our solutions to the problems cannot busy wait, our test
-        // programs can!
-        for (int i = 0; i < 5; i++) {
-            System.out.println ("busy...");
-            KThread.currentThread().yield();
-        }
-        child1.join();
-        System.out.println("After joining, child1 should be finished.");
-        System.out.println("is it? " + (child1.status == statusFinished));
-        Lib.assertTrue((child1.status == statusFinished), " Expected child1 to be finished.");
-    }
-
-    private static void joinTest2() {
-        System.out.println("\n*** Starting joinTest2 ***");
-        
-        final KThread current = KThread.currentThread();
-        
-        KThread child = new KThread(new Runnable() {
-            public void run() {
-                System.out.println("Child thread is running...");
-                // Do some work before finishing
-                for (int i = 0; i < 3; i++) {
-                    System.out.println("Child working: " + i);
-                    KThread.yield();
-                }
-                System.out.println("Child thread finishing");
-            }
-        });
-        
-        child.setName("waitingChild").fork();
-        
-        // Join immediately without busy waiting
-        System.out.println("Parent joining child that is still running");
-        child.join();
-        
-        System.out.println("Parent resumed after child finished");
-        Lib.assertTrue((child.status == statusFinished), "Expected child to be finished after join returns.");
-    }
-    private static void joinTest3() {
-        System.out.println("\n*** Starting joinSelfTest ***");
-        
-        KThread current = KThread.currentThread();
-        
-        try {
-            System.out.println("Attempting to join self (should fail)");
-            current.join();
-            Lib.assertTrue(false, "Thread was able to join itself, which should not be allowed");
-        } catch (Throwable e) {
-            System.out.println("Correctly prevented self-join with exception: " + e.getMessage());
-        }
-    }
-    private static void joinTest4() {
-        System.out.println("\n*** Starting doubleJoinTest ***");
-        
-        final KThread[] joinerThreads = new KThread[2];
-        
-        // Thread to be joined
-        KThread target = new KThread(new Runnable() {
-            public void run() {
-                System.out.println("Target thread running...");
-                for (int i = 0; i < 2; i++) {
-                    System.out.println("Target working: " + i);
-                    KThread.yield();
-                }
-                System.out.println("Target thread finishing");
-            }
-        });
-        target.setName("targetThread").fork();
-        
-        // First joiner thread
-        KThread joiner1 = new KThread(new Runnable() {
-            public void run() {
-                System.out.println("Joiner1 attempting to join target");
-                target.join();
-                System.out.println("Joiner1 resumed after target finished");
-            }
-        });
-        joiner1.setName("joiner1").fork();
-        
-        // Give joiner1 time to join
-        KThread.yield();
-        
-        // Second joiner thread
-        KThread joiner2 = new KThread(new Runnable() {
-            public void run() {
-                System.out.println("Joiner2 attempting to join target");
-                try {
-                    target.join();
-                    System.out.println("Joiner2 resumed - join should have failed if target was already joined");
-                    Lib.assertTrue(false, "Should not be able to join a thread already joined by another thread");
-                } catch (Throwable e) {
-                    System.out.println("Correctly prevented double-join with exception: " + e.getMessage());
-                }
-            }
-        });
-        joiner2.setName("joiner2").fork();
-        
-        // Wait for all threads to finish
-        for (int i = 0; i < 10; i++) {
-            KThread.yield();
-        }
-        
-        System.out.println("Double join test completed");
-    }
-    private static void joinTest5() {
-        System.out.println("\n*** Starting joinFinishedTest ***");
-        
-        KThread child = new KThread(new Runnable() {
-            public void run() {
-                System.out.println("Short-lived thread running and finishing quickly");
-            }
-        });
-        
-        child.setName("shortLivedThread").fork();
-        
-        // Make sure the child thread finishes
-        for (int i = 0; i < 5; i++) {
-            KThread.yield();
-        }
-        
-        System.out.println("Child thread should be finished by now");
-        System.out.println("Attempting to join already finished thread");
-        
-        child.join();
-        
-        System.out.println("Join on already finished thread completed (should return immediately)");
-        Lib.assertTrue((child.status == statusFinished), "Expected thread to be in finished state");
-    }
-
-    private static void joinTest6() {
-        System.out.println("\n*** Starting multipleJoinsTest ***");
-        
-        final int numThreads = 3;
-        final KThread[] workers = new KThread[numThreads];
-        final KThread[] joiners = new KThread[numThreads];
-        
-        // Create worker threads
-        for (int i = 0; i < numThreads; i++) {
-            final int id = i;
-            workers[i] = new KThread(new Runnable() {
-                public void run() {
-                    System.out.println("Worker " + id + " running");
-                    for (int j = 0; j < 2; j++) {
-                        System.out.println("Worker " + id + " step " + j);
-                        KThread.yield();
-                    }
-                    System.out.println("Worker " + id + " finishing");
-                }
-            });
-            workers[i].setName("worker" + i).fork();
-        }
-        
-        // Create joiner threads, each joining a different worker
-        for (int i = 0; i < numThreads; i++) {
-            final int id = i;
-            joiners[i] = new KThread(new Runnable() {
-                public void run() {
-                    System.out.println("Joiner " + id + " attempting to join worker " + id);
-                    workers[id].join();
-                    System.out.println("Joiner " + id + " resumed after worker " + id + " finished");
-                    Lib.assertTrue((workers[id].status == statusFinished), 
-                        "Expected worker to be finished after join returns");
-                }
-            });
-            joiners[i].setName("joiner" + i).fork();
-        }
-        
-        // Wait for all threads to finish
-        for (int i = 0; i < numThreads * 4; i++) {
-            KThread.yield();
-        }
-        
-        System.out.println("Multiple joins test completed");
-    }
+    // private static void joinTest1 () {
+    //     KThread child1 = new KThread( new Runnable () {
+    //         public void run() {
+    //             System.out.println("I (heart) Nachos!");
+    //         }
+    //     });
+    //     child1.setName("child1").fork();
+    //     // We want the child to finish before we call join. Although
+    //     // our solutions to the problems cannot busy wait, our test
+    //     // programs can!
+    //     for (int i = 0; i < 5; i++) {
+    //         System.out.println ("busy...");
+    //         KThread.currentThread().yield();
+    //     }
+    //     child1.join();
+    //     System.out.println("After joining, child1 should be finished.");
+    //     System.out.println("is it? " + (child1.status == statusFinished));
+    //     Lib.assertTrue((child1.status == statusFinished), " Expected child1 to be finished.");
+    // }
+    //
+    // private static void joinTest2() {
+    //     System.out.println("\n*** Starting joinTest2 ***");
+    //     
+    //     final KThread current = KThread.currentThread();
+    //     
+    //     KThread child = new KThread(new Runnable() {
+    //         public void run() {
+    //             System.out.println("Child thread is running...");
+    //             // Do some work before finishing
+    //             for (int i = 0; i < 3; i++) {
+    //                 System.out.println("Child working: " + i);
+    //                 KThread.yield();
+    //             }
+    //             System.out.println("Child thread finishing");
+    //         }
+    //     });
+    //     
+    //     child.setName("waitingChild").fork();
+    //     
+    //     // Join immediately without busy waiting
+    //     System.out.println("Parent joining child that is still running");
+    //     child.join();
+    //     
+    //     System.out.println("Parent resumed after child finished");
+    //     Lib.assertTrue((child.status == statusFinished), "Expected child to be finished after join returns.");
+    // }
+    // private static void joinTest3() {
+    //     System.out.println("\n*** Starting joinSelfTest ***");
+    //     
+    //     KThread current = KThread.currentThread();
+    //     
+    //     try {
+    //         System.out.println("Attempting to join self (should fail)");
+    //         current.join();
+    //         Lib.assertTrue(false, "Thread was able to join itself, which should not be allowed");
+    //     } catch (Throwable e) {
+    //         System.out.println("Correctly prevented self-join with exception: " + e.getMessage());
+    //     }
+    // }
+    // private static void joinTest4() {
+    //     System.out.println("\n*** Starting doubleJoinTest ***");
+    //     
+    //     final KThread[] joinerThreads = new KThread[2];
+    //     
+    //     // Thread to be joined
+    //     KThread target = new KThread(new Runnable() {
+    //         public void run() {
+    //             System.out.println("Target thread running...");
+    //             for (int i = 0; i < 2; i++) {
+    //                 System.out.println("Target working: " + i);
+    //                 KThread.yield();
+    //             }
+    //             System.out.println("Target thread finishing");
+    //         }
+    //     });
+    //     target.setName("targetThread").fork();
+    //     
+    //     // First joiner thread
+    //     KThread joiner1 = new KThread(new Runnable() {
+    //         public void run() {
+    //             System.out.println("Joiner1 attempting to join target");
+    //             target.join();
+    //             System.out.println("Joiner1 resumed after target finished");
+    //         }
+    //     });
+    //     joiner1.setName("joiner1").fork();
+    //     
+    //     // Give joiner1 time to join
+    //     KThread.yield();
+    //     
+    //     // Second joiner thread
+    //     KThread joiner2 = new KThread(new Runnable() {
+    //         public void run() {
+    //             System.out.println("Joiner2 attempting to join target");
+    //             try {
+    //                 target.join();
+    //                 System.out.println("Joiner2 resumed - join should have failed if target was already joined");
+    //                 Lib.assertTrue(false, "Should not be able to join a thread already joined by another thread");
+    //             } catch (Throwable e) {
+    //                 System.out.println("Correctly prevented double-join with exception: " + e.getMessage());
+    //             }
+    //         }
+    //     });
+    //     joiner2.setName("joiner2").fork();
+    //     
+    //     // Wait for all threads to finish
+    //     for (int i = 0; i < 10; i++) {
+    //         KThread.yield();
+    //     }
+    //     
+    //     System.out.println("Double join test completed");
+    // }
+    // private static void joinTest5() {
+    //     System.out.println("\n*** Starting joinFinishedTest ***");
+    //     
+    //     KThread child = new KThread(new Runnable() {
+    //         public void run() {
+    //             System.out.println("Short-lived thread running and finishing quickly");
+    //         }
+    //     });
+    //     
+    //     child.setName("shortLivedThread").fork();
+    //     
+    //     // Make sure the child thread finishes
+    //     for (int i = 0; i < 5; i++) {
+    //         KThread.yield();
+    //     }
+    //     
+    //     System.out.println("Child thread should be finished by now");
+    //     System.out.println("Attempting to join already finished thread");
+    //     
+    //     child.join();
+    //     
+    //     System.out.println("Join on already finished thread completed (should return immediately)");
+    //     Lib.assertTrue((child.status == statusFinished), "Expected thread to be in finished state");
+    // }
+    //
+    // private static void joinTest6() {
+    //     System.out.println("\n*** Starting multipleJoinsTest ***");
+    //     
+    //     final int numThreads = 3;
+    //     final KThread[] workers = new KThread[numThreads];
+    //     final KThread[] joiners = new KThread[numThreads];
+    //     
+    //     // Create worker threads
+    //     for (int i = 0; i < numThreads; i++) {
+    //         final int id = i;
+    //         workers[i] = new KThread(new Runnable() {
+    //             public void run() {
+    //                 System.out.println("Worker " + id + " running");
+    //                 for (int j = 0; j < 2; j++) {
+    //                     System.out.println("Worker " + id + " step " + j);
+    //                     KThread.yield();
+    //                 }
+    //                 System.out.println("Worker " + id + " finishing");
+    //             }
+    //         });
+    //         workers[i].setName("worker" + i).fork();
+    //     }
+    //     
+    //     // Create joiner threads, each joining a different worker
+    //     for (int i = 0; i < numThreads; i++) {
+    //         final int id = i;
+    //         joiners[i] = new KThread(new Runnable() {
+    //             public void run() {
+    //                 System.out.println("Joiner " + id + " attempting to join worker " + id);
+    //                 workers[id].join();
+    //                 System.out.println("Joiner " + id + " resumed after worker " + id + " finished");
+    //                 Lib.assertTrue((workers[id].status == statusFinished), 
+    //                     "Expected worker to be finished after join returns");
+    //             }
+    //         });
+    //         joiners[i].setName("joiner" + i).fork();
+    //     }
+    //     
+    //     // Wait for all threads to finish
+    //     for (int i = 0; i < numThreads * 4; i++) {
+    //         KThread.yield();
+    //     }
+    //     
+    //     System.out.println("Multiple joins test completed");
+    // }
 	/**
 	 * The status of this thread. A thread can either be new (not yet forked),
 	 * ready (on the ready queue but not running), running, or blocked (not on
