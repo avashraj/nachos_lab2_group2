@@ -7,6 +7,8 @@ public class Boat {
     // Shared state variables
     static int adultsOnOahu;
     static int childrenOnOahu;
+    static int adultsOnMolokai;
+    static int childrenOnMolokai;
     static boolean boatOnOahu;
     
     // Keep track of each thread's state
@@ -15,7 +17,10 @@ public class Boat {
     
     // Synchronization variables
     static Lock lock;
-    static Condition cv;
+    static Condition adultCV;
+    static Condition childOahuCV;
+    static Condition childMolokaiCV;
+    static boolean done;
     
     public static void selfTest() {
         BoatGrader b = new BoatGrader();
@@ -23,9 +28,8 @@ public class Boat {
         // begin(0, 2, b);
         // System.out.println("\n ***Testing Boats with 2 children, 1 adult***");
         // begin(1, 2, b);
-        // System.out.println("\n ***Testing Boats with 3 children, 3 adults***");
-        // begin(3, 3, b);
-            begin(4,4,b);
+        System.out.println("\n ***Testing Boats with 3 children, 3 adults***");
+        begin(3, 3, b);
     }
     
     public static void begin(int adults, int children, BoatGrader b) {
@@ -34,7 +38,10 @@ public class Boat {
         // Initialize shared state
         adultsOnOahu = adults;
         childrenOnOahu = children;
+        adultsOnMolokai = 0;
+        childrenOnMolokai = 0;
         boatOnOahu = true;
+        done = false;
         
         // Initialize location arrays
         childOnOahu = new boolean[children];
@@ -52,7 +59,9 @@ public class Boat {
         
         // Initialize synchronization
         lock = new Lock();
-        cv = new Condition(lock);
+        adultCV = new Condition(lock);
+        childOahuCV = new Condition(lock);
+        childMolokaiCV = new Condition(lock);
         
         // Create threads for each child
         for (int i = 0; i < children; i++) {
@@ -84,10 +93,19 @@ public class Boat {
     static void AdultItinerary(int id) {
         lock.acquire();
         
-        // Wait until conditions are right for this adult to cross
-        while (!(boatOnOahu && childrenOnOahu == 1 && adultOnOahu[id])) {
+        // Wait until conditions are right for this adult to cross:
+        // 1. Boat must be on Oahu
+        // 2. Adult must be on Oahu
+        // 3. There should be exactly one child on Oahu (to bring boat back)
+        while (!(boatOnOahu && adultOnOahu[id] && childrenOnOahu == 1) || done) {
             System.out.println("DEBUG: Adult " + id + " waiting");
-            cv.sleep();
+            adultCV.sleep();
+            
+            // Check if everyone is across already
+            if (done) {
+                lock.release();
+                return;
+            }
         }
         
         // Adult crosses to Molokai
@@ -95,6 +113,7 @@ public class Boat {
         
         // Update state
         adultsOnOahu--;
+        adultsOnMolokai++;
         boatOnOahu = false;
         adultOnOahu[id] = false;
         
@@ -105,33 +124,31 @@ public class Boat {
                           ", Children on Oahu = " + childrenOnOahu + 
                           ", Boat on Oahu = " + boatOnOahu);
         
-        // Notify everyone of the state change
-        cv.wakeAll();
+        // Wake up children on Molokai so one can row back
+        childMolokaiCV.wakeAll();
         
         lock.release();
     }
     
     static void ChildItinerary(int id) {
-        // Active flag to keep child thread running
-        boolean active = true;
-        
-        while (active) {
+        while (true) {
             lock.acquire();
             
             // Check if everyone is on Molokai
             if (adultsOnOahu == 0 && childrenOnOahu == 0) {
                 System.out.println("DEBUG: Everyone is on Molokai!");
-                cv.wakeAll();
+                done = true;
+                adultCV.wakeAll();
+                childOahuCV.wakeAll();
+                childMolokaiCV.wakeAll();
                 lock.release();
                 return;
             }
             
             // CASE 1: Child on Oahu with boat
             if (childOnOahu[id] && boatOnOahu) {
-                // Two children can cross
+                // Two children crossing scenario
                 if (childrenOnOahu >= 2) {
-                    System.out.println("DEBUG: Child " + id + " initiating crossing with another child");
-                    
                     // Find another child on Oahu to be a passenger
                     int passengerId = -1;
                     for (int i = 0; i < childOnOahu.length; i++) {
@@ -142,30 +159,42 @@ public class Boat {
                     }
                     
                     if (passengerId != -1) {
-                        // Update state for two children crossing
-                        childrenOnOahu -= 2;
-                        boatOnOahu = false;
-                        childOnOahu[id] = false;
-                        childOnOahu[passengerId] = false;
+                        System.out.println("DEBUG: Child " + id + " rowing to Molokai with Child " + passengerId);
                         
-                        // First child rows, second rides
-                        bg.ChildRowToMolokai();
-                        bg.ChildRideToMolokai();
+                        // Update state for driver
+                        childOnOahu[id] = false;
+                        childrenOnOahu--;
+                        childrenOnMolokai++;
+                        
+                        // Update state for passenger
+                        childOnOahu[passengerId] = false;
+                        childrenOnOahu--;
+                        childrenOnMolokai++;
+                        
+                        // Update boat location
+                        boatOnOahu = false;
+                        
+                        // Perform boat actions
+                        bg.ChildRowToMolokai();  // Driver
+                        bg.ChildRideToMolokai(); // Passenger
                         
                         System.out.println("DEBUG: After children cross: Adults on Oahu = " + adultsOnOahu + 
-                                          ", Children on Oahu = " + childrenOnOahu + 
-                                          ", Boat on Oahu = " + boatOnOahu);
+                                           ", Children on Oahu = " + childrenOnOahu + 
+                                           ", Boat on Oahu = " + boatOnOahu);
                         
-                        // Notify everyone of the state change
-                        cv.wakeAll();
+                        // Wake up children on Molokai
+                        childMolokaiCV.wakeAll();
+                        lock.release();
+                        continue;
                     }
                 }
-                // Child alone on Oahu with no adults - last one to cross
+                // Last child crossing alone
                 else if (childrenOnOahu == 1 && adultsOnOahu == 0) {
                     System.out.println("DEBUG: Last child " + id + " crossing to Molokai");
                     
                     // Update state
                     childrenOnOahu--;
+                    childrenOnMolokai++;
                     boatOnOahu = false;
                     childOnOahu[id] = false;
                     
@@ -173,32 +202,30 @@ public class Boat {
                     bg.ChildRowToMolokai();
                     
                     System.out.println("DEBUG: After last child crosses: Adults on Oahu = " + adultsOnOahu + 
-                                      ", Children on Oahu = " + childrenOnOahu + 
-                                      ", Boat on Oahu = " + boatOnOahu);
+                                       ", Children on Oahu = " + childrenOnOahu + 
+                                       ", Boat on Oahu = " + boatOnOahu);
                     
-                    // Notify everyone
-                    cv.wakeAll();
+                    // Wake everyone up in case it's the last crossing
+                    childMolokaiCV.wakeAll();
+                    adultCV.wakeAll();
+                    lock.release();
+                    continue;
                 }
-                // Only one child on Oahu with adults
+                // Only one child on Oahu with adults - wake adults to check if one can cross
                 else if (childrenOnOahu == 1 && adultsOnOahu > 0) {
-                    System.out.println("DEBUG: Child " + id + " waiting for adult to cross");
-                    cv.wakeAll(); // Wake adults to check if they can cross
-                    cv.sleep();
-                }
-                else {
-                    // Shouldn't reach here, but just in case
-                    System.out.println("DEBUG: Child " + id + " waiting for state change");
-                    cv.sleep();
+                    System.out.println("DEBUG: Single child " + id + " on Oahu, waking adults");
+                    adultCV.wakeAll();
                 }
             }
             // CASE 2: Child on Molokai with boat
             else if (!childOnOahu[id] && !boatOnOahu) {
-                // If people still on Oahu, send child back
+                // Check if people are still on Oahu
                 if (adultsOnOahu > 0 || childrenOnOahu > 0) {
                     System.out.println("DEBUG: Child " + id + " rowing back to Oahu");
                     
                     // Update state
                     childrenOnOahu++;
+                    childrenOnMolokai--;
                     boatOnOahu = true;
                     childOnOahu[id] = true;
                     
@@ -209,27 +236,32 @@ public class Boat {
                                       ", Children on Oahu = " + childrenOnOahu + 
                                       ", Boat on Oahu = " + boatOnOahu);
                     
-                    // Notify everyone of the state change
-                    cv.wakeAll();
+                    // Wake up everyone on Oahu
+                    childOahuCV.wakeAll();
+                    adultCV.wakeAll();
+                    
+                    // Sleep to allow other children on Molokai to act
+                    childMolokaiCV.sleep();
                 }
                 else {
-                    // Everyone is on Molokai - done!
+                    // Everyone's on Molokai - we're done!
                     System.out.println("DEBUG: Child " + id + " on Molokai - everyone is here");
-                    cv.wakeAll();
-                    active = false;
+                    childMolokaiCV.wakeAll();
+                    childOahuCV.wakeAll();
+                    adultCV.wakeAll();
                 }
             }
-            // CASE 3: Child waiting for boat
+            // CASE 3: Child waiting based on location
+            else if (childOnOahu[id]) {
+                System.out.println("DEBUG: Child " + id + " waiting on Oahu");
+                childOahuCV.sleep();
+            }
             else {
-                System.out.println("DEBUG: Child " + id + " waiting for boat, location=" + 
-                                 (childOnOahu[id] ? "Oahu" : "Molokai") + 
-                                 ", boat=" + (boatOnOahu ? "Oahu" : "Molokai"));
-                cv.sleep();
+                System.out.println("DEBUG: Child " + id + " waiting on Molokai");
+                childMolokaiCV.sleep();
             }
             
             lock.release();
-            
-            // Small yield to avoid thread starvation
             KThread.yield();
         }
     }
