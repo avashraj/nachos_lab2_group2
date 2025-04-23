@@ -374,6 +374,55 @@ public class UserProcess {
 		return 0;
 	}
 
+	/**
+	 * Handle the write() system call.
+	 */
+	private int handleWrite(int fileDescriptor, int bufferAddress, int count) {
+		// Validate parameters
+		if (fileDescriptor < 0 || fileDescriptor >= 16 || count < 0) {
+			return -1;
+		}
+		
+		OpenFile file = myFileSlots[fileDescriptor];
+		if (file == null) {
+			return -1;
+		}
+		
+		// Use page-sized buffer for efficient memory transfers
+		int pageSize = Processor.pageSize;
+		byte[] kernelBuffer = new byte[pageSize];
+		
+		int totalBytesWritten = 0;
+		int remainingBytes = count;
+		int currentBufferAddress = bufferAddress;
+		
+		while (remainingBytes > 0) {
+			int bytesToRead = Math.min(remainingBytes, pageSize);
+			int bytesRead = readVirtualMemory(currentBufferAddress, kernelBuffer, 0, bytesToRead);
+			
+			if (bytesRead == 0) {
+				return (totalBytesWritten > 0) ? totalBytesWritten : -1;
+			}
+			
+			int bytesWritten = file.write(kernelBuffer, 0, bytesRead);
+			
+			// For disk files, consider partial writes as errors
+			if (bytesWritten < 0 || (bytesWritten < bytesRead && fileDescriptor != 1)) {
+				return (totalBytesWritten > 0) ? totalBytesWritten : -1;
+			}
+			
+			totalBytesWritten += bytesWritten;
+			currentBufferAddress += bytesWritten;
+			remainingBytes -= bytesWritten;
+			
+			if (bytesWritten < bytesRead) {
+				break;
+			}
+		}
+		
+		return totalBytesWritten;
+	}
+
 	private static final int syscallHalt = 0, syscallExit = 1, syscallExec = 2,
 			syscallJoin = 3, syscallCreate = 4, syscallOpen = 5,
 			syscallRead = 6, syscallWrite = 7, syscallClose = 8,
@@ -446,6 +495,8 @@ public class UserProcess {
 			return handleHalt();
 		case syscallExit:
 			return handleExit(a0);
+		case syscallWrite:
+			return handleWrite(a0, a1, a2);
 
 		default:
 			Lib.debug(dbgProcess, "Unknown syscall " + syscall);
