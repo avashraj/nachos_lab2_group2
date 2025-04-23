@@ -26,6 +26,9 @@ public class UserProcess {
     public UserProcess() {
         int numPhysPages = Machine.processor().getNumPhysPages();
         pageTable = new TranslationEntry[numPhysPages];
+        myFileSlots = new OpenFile[16];
+        myFileSlots[0] = UserKernel.console.openForReading();
+        myFileSlots[1] = UserKernel.console.openForWriting();
         for (int i = 0; i < numPhysPages; i++) pageTable[i] =
             new TranslationEntry(i, i, true, false, false, false);
     }
@@ -395,10 +398,31 @@ public class UserProcess {
     }
 
     /*
+        Handle the create system call
+    */
+    private int handleCreate(int virtaddr) {
+        String filename = readVirtualMemoryString(virtaddr, 256);
+        if (filename == null) return -1;
+
+        OpenFile file = ThreadedKernel.fileSystem.open(filename, true);
+        if (file == null) return -1;
+
+        for (int i = 0; i < myFileSlots.length; i++) {
+            if (myFileSlots[i] == null) {
+                myFileSlots[i] = file;
+                return i;
+            }
+        }
+
+        file.close();
+        return -1;
+    }
+
+    /*
 	   Handle the unlink system call
 	*/
-    private int handleUnlink(int vaddr) {
-        String filename = readVirtualMemoryString(vaddr, 256);
+    private int handleUnlink(int virtaddr) {
+        String filename = readVirtualMemoryString(virtaddr, 256);
 
         if (filename == null) {
             return -1;
@@ -478,6 +502,8 @@ public class UserProcess {
                 return handleHalt();
             case syscallExit:
                 return handleExit(a0);
+            case syscallCreate:
+                return handleCreate(a0);
             case syscallUnlink:
                 return handleUnlink(a0);
             default:
@@ -540,4 +566,5 @@ public class UserProcess {
     private static final int pageSize = Processor.pageSize;
 
     private static final char dbgProcess = 'a';
+    protected OpenFile[] myFileSlots = new OpenFile[16];
 }
