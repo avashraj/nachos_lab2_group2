@@ -374,6 +374,17 @@ public class UserProcess {
 		return 0;
 	}
 
+	private int handleClose(int fd) {
+		if (fd < 0 || fd >= myFileTable.length || myFileTable[fd] == null) {
+			return -1;
+		}
+
+		OpenFile file = myFileTable[fd];
+		file.close();
+		myFileTable[fd] = null;
+		return 0;
+	}
+
 	private static final int syscallHalt = 0, syscallExit = 1, syscallExec = 2,
 			syscallJoin = 3, syscallCreate = 4, syscallOpen = 5,
 			syscallRead = 6, syscallWrite = 7, syscallClose = 8,
@@ -446,6 +457,9 @@ public class UserProcess {
 			return handleHalt();
 		case syscallExit:
 			return handleExit(a0);
+		case syscallClose:
+			return handleClose(a0);
+
 
 		default:
 			Lib.debug(dbgProcess, "Unknown syscall " + syscall);
@@ -504,4 +518,7 @@ public class UserProcess {
 	private static final int pageSize = Processor.pageSize;
 
 	private static final char dbgProcess = 'a';
+
+	private static final int MAX_FILES = 16;
+	protected OpenFile[] myFileTable = new OpenFile[MAX_FILES]
 }
