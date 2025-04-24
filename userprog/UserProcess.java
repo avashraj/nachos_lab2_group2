@@ -28,7 +28,12 @@ public class UserProcess {
 		pageTable = new TranslationEntry[numPhysPages];
 		for (int i = 0; i < numPhysPages; i++)
 			pageTable[i] = new TranslationEntry(i, i, true, false, false, false);
+
+		myFileSlots = new OpenFile[16];
+		myFileSlots[0] = UserKernel.console.openForReading();
+		myFileSlots[1] = UserKernel.console.openForWriting();
 	}
+
 
 	/**
 	 * Allocate and return a new process of the correct class. The class name is
@@ -374,6 +379,43 @@ public class UserProcess {
 		return 0;
 	}
 
+	/**
+     * Handle the open() system call.
+     * 
+     * @param vaddr the virtual address of the filename string
+     * @return the file descriptor on success, or -1 on failure
+     */
+    private int handleOpen(int vaddr) {
+        // Read the filename from user memory
+        String filename = readVirtualMemoryString(vaddr, 256);
+    
+        // Check if filename is valid
+        if (filename == null) {
+            return -1;
+        }
+    
+        // Try to open the file (create=false since we're only opening existing files)
+        OpenFile file = ThreadedKernel.fileSystem.open(filename, false);
+    
+        // Check if file was opened successfully
+        if (file == null) {
+            return -1;
+        }
+    
+        // Find an available slot in the file descriptor table
+        for (int i = 0; i < myFileSlots.length; i++) {
+            if (myFileSlots[i] == null) {
+                // Found an available slot, store the file and return the descriptor
+                myFileSlots[i] = file;
+                return i;
+            }
+        }
+    
+        // No available slots in the file table
+        file.close(); // Close the file since we can't use it
+        return -1;
+    }
+
 	private static final int syscallHalt = 0, syscallExit = 1, syscallExec = 2,
 			syscallJoin = 3, syscallCreate = 4, syscallOpen = 5,
 			syscallRead = 6, syscallWrite = 7, syscallClose = 8,
@@ -446,7 +488,8 @@ public class UserProcess {
 			return handleHalt();
 		case syscallExit:
 			return handleExit(a0);
-
+		case syscallOpen:
+			return handleOpen(a0);
 		default:
 			Lib.debug(dbgProcess, "Unknown syscall " + syscall);
 			Lib.assertNotReached("Unknown system call!");
@@ -504,4 +547,5 @@ public class UserProcess {
 	private static final int pageSize = Processor.pageSize;
 
 	private static final char dbgProcess = 'a';
+	protected OpenFile[] myFileSlots = new OpenFile[16];
 }
