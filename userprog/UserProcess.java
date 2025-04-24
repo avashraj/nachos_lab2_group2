@@ -24,6 +24,15 @@ public class UserProcess {
 	 * Allocate a new process.
 	 */
 	public UserProcess() {
+
+		// Project 2 Task 1: Initialize OpenFiles array
+		myFileSlots = new OpenFile[16];
+		// Project 2 Task 1: Initialize stdin/stdout slots in OpenFiles array
+		// File descriptor 0 refers to keyboard input (UNIX stdin)
+		myFileSlots[0] = UserKernel.console.openForReading();
+		// File descriptor 1 refers to display output (UNIX stdout)
+		myFileSlots[1] = UserKernel.console.openForWriting();
+
 		int numPhysPages = Machine.processor().getNumPhysPages();
 		pageTable = new TranslationEntry[numPhysPages];
 		for (int i = 0; i < numPhysPages; i++)
@@ -357,6 +366,31 @@ public class UserProcess {
 		Lib.assertNotReached("Machine.halt() did not halt machine!");
 		return 0;
 	}
+	private int handleRead(int slotNum, int virtaddr, int numBytes) {
+		if (fd < 0 || slotNum >= myFileSlots.length || myFileSlots[slotNum] == null || size < 0){
+			return -1;
+		}
+
+		OpenFile file = myFileSlots[slotNum];
+		byte[] buffer = new byte[numBytes];
+
+
+		int readBytes = file.read(buffer, 0, numBytes);
+		if (readBytes < 0) {
+			return -1;
+		}
+
+		int writtenBytes = writeVirtualMemory(virtaddr, buffer, 0, readBytes);
+		if (writtenBytes < 0)
+			return -1;
+		if (writtenBytes != numBytes){
+			return -1
+		}
+		
+		return writtenBytes;
+	}
+	/**check for input of any index past 16 */
+	
 
 	/**
 	 * Handle the exit() system call.
