@@ -28,6 +28,10 @@ public class UserProcess {
 		pageTable = new TranslationEntry[numPhysPages];
 		for (int i = 0; i < numPhysPages; i++)
 			pageTable[i] = new TranslationEntry(i, i, true, false, false, false);
+		// Initialize the file descriptor table
+		myFileSlots = new OpenFile[16];
+		myFileSlots[0] = UserKernel.console.openForReading();
+		myFileSlots[1] = UserKernel.console.openForWriting();
 	}
 
 	/**
@@ -382,6 +386,10 @@ public class UserProcess {
 		if (fileDescriptor < 0 || fileDescriptor >= 16 || count < 0) {
 			return -1;
 		}
+
+		if (bufferAddress < 0) {
+			return -1;
+	    }
 		
 		OpenFile file = myFileSlots[fileDescriptor];
 		if (file == null) {
@@ -400,24 +408,23 @@ public class UserProcess {
 			int bytesToRead = Math.min(remainingBytes, pageSize);
 			int bytesRead = readVirtualMemory(currentBufferAddress, kernelBuffer, 0, bytesToRead);
 			
-			if (bytesRead == 0) {
-				return (totalBytesWritten > 0) ? totalBytesWritten : -1;
+			// Check for read failure from user memory
+			if (bytesRead < bytesToRead) { 
+				return -1;
 			}
 			
 			int bytesWritten = file.write(kernelBuffer, 0, bytesRead);
 			
-			// For disk files, consider partial writes as errors
-			if (bytesWritten < 0 || (bytesWritten < bytesRead && fileDescriptor != 1)) {
-				return (totalBytesWritten > 0) ? totalBytesWritten : -1;
+			// Check for write errors according to syscall.h
+			if (bytesWritten < 0 || bytesWritten < bytesRead) {
+				Lib.debug(dbgProcess, "handleWrite: File write error or partial write. Wrote=" + bytesWritten + ", Expected=" + bytesRead);
+				return -1; 
 			}
 			
+			// If we reach here, the write was successful 
 			totalBytesWritten += bytesWritten;
-			currentBufferAddress += bytesWritten;
-			remainingBytes -= bytesWritten;
-			
-			if (bytesWritten < bytesRead) {
-				break;
-			}
+			currentBufferAddress += bytesWritten; 
+			remainingBytes -= bytesWritten; 
 		}
 		
 		return totalBytesWritten;
@@ -547,6 +554,9 @@ public class UserProcess {
 
 	/** The thread that executes the user-level program. */
         protected UThread thread;
+
+	/** File descriptor table for this process. */
+    protected OpenFile[] myFileSlots;
     
 	private int initialPC, initialSP;
 
