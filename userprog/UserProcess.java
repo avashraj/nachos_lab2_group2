@@ -431,6 +431,146 @@ public class UserProcess {
         return success ? 0 : -1;
     }
 
+    /*
+        Handle open function call
+    */
+    private int handleOpen(int vaddr) {
+        // Read the filename from user memory
+        String filename = readVirtualMemoryString(vaddr, 256);
+
+        // Check if filename is valid
+        if (filename == null) {
+            return -1;
+        }
+
+        // Try to open the file (create=false since we're only opening existing files)
+        OpenFile file = ThreadedKernel.fileSystem.open(filename, false);
+
+        // Check if file was opened successfully
+        if (file == null) {
+            return -1;
+        }
+
+        // Find an available slot in the file descriptor table
+        for (int i = 0; i < myFileSlots.length; i++) {
+            if (myFileSlots[i] == null) {
+                // Found an available slot, store the file and return the descriptor
+                myFileSlots[i] = file;
+                return i;
+            }
+        }
+
+        // No available slots in the file table
+        file.close(); // Close the file since we can't use it
+        return -1;
+    }
+
+    /*
+        Handle write system Call
+    */
+    private int handleWrite(int fileDescriptor, int bufferAddress, int count) {
+        // Validate parameters
+        if (fileDescriptor < 0 || fileDescriptor >= 16 || count < 0) {
+            return -1;
+        }
+
+        if (bufferAddress < 0) {
+            return -1;
+        }
+
+        OpenFile file = myFileSlots[fileDescriptor];
+        if (file == null) {
+            return -1;
+        }
+
+        // Use page-sized buffer for efficient memory transfers
+        int pageSize = Processor.pageSize;
+        byte[] kernelBuffer = new byte[pageSize];
+
+        int totalBytesWritten = 0;
+        int remainingBytes = count;
+        int currentBufferAddress = bufferAddress;
+
+        while (remainingBytes > 0) {
+            int bytesToRead = Math.min(remainingBytes, pageSize);
+            int bytesRead = readVirtualMemory(
+                currentBufferAddress,
+                kernelBuffer,
+                0,
+                bytesToRead
+            );
+
+            // Check for read failure from user memory
+            if (bytesRead < bytesToRead) {
+                return -1;
+            }
+
+            int bytesWritten = file.write(kernelBuffer, 0, bytesRead);
+
+            // Check for write errors according to syscall.h
+            if (bytesWritten < 0 || bytesWritten < bytesRead) {
+                Lib.debug(
+                    dbgProcess,
+                    "handleWrite: File write error or partial write. Wrote=" +
+                    bytesWritten +
+                    ", Expected=" +
+                    bytesRead
+                );
+                return -1;
+            }
+
+            // If we reach here, the write was successful
+            totalBytesWritten += bytesWritten;
+            currentBufferAddress += bytesWritten;
+            remainingBytes -= bytesWritten;
+        }
+
+        return totalBytesWritten;
+    }
+
+    /*
+        Handle close syscall
+    */
+    private int handleClose(int fd) {
+        if (fd < 0 || fd >= myFileSlots.length || myFileSlots[fd] == null) {
+            return -1;
+        }
+
+        OpenFile file = myFileSlots[fd];
+        file.close();
+        myFileSlots[fd] = null;
+        return 0;
+    }
+
+    /*
+        Handle read syscall
+    */
+    private int handleRead(int slotNum, int virtaddr, int numBytes) {
+        if (
+            slotNum < 0 ||
+            slotNum >= myFileSlots.length ||
+            myFileSlots[slotNum] == null ||
+            numBytes < 0
+        ) {
+            return -1;
+        }
+
+        OpenFile file = myFileSlots[slotNum];
+        byte[] buffer = new byte[numBytes];
+
+        int readBytes = file.read(buffer, 0, numBytes);
+        if (readBytes < 0) {
+            return -1;
+        }
+
+        int writtenBytes = writeVirtualMemory(virtaddr, buffer, 0, readBytes);
+        if (writtenBytes < readBytes) {
+            return -1;
+        }
+
+        return writtenBytes;
+    }
+
     private static final int syscallHalt = 0, syscallExit = 1, syscallExec =
         2, syscallJoin = 3, syscallCreate = 4, syscallOpen = 5, syscallRead =
         6, syscallWrite = 7, syscallClose = 8, syscallUnlink = 9;
@@ -504,6 +644,14 @@ public class UserProcess {
                 return handleExit(a0);
             case syscallCreate:
                 return handleCreate(a0);
+            case syscallOpen:
+                return handleOpen(a0);
+            case syscallRead:
+                return handleRead(a0, a1, a2);
+            case syscallWrite:
+                return handleWrite(a0, a1, a2);
+            case syscallClose:
+                return handleClose(a0);
             case syscallUnlink:
                 return handleUnlink(a0);
             default:
