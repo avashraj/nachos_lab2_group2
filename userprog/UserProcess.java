@@ -528,6 +528,21 @@ public class UserProcess {
         return totalBytesWritten;
     }
 
+    /*
+        Handle close syscall
+    */
+
+    private int handleClose(int fd) {
+        if (fd < 0 || fd >= myFileSlots.length || myFileSlots[fd] == null) {
+            return -1;
+        }
+
+        OpenFile file = myFileSlots[fd];
+        file.close();
+        myFileSlots[fd] = null;
+        return 0;
+    }
+
     private static final int syscallHalt = 0, syscallExit = 1, syscallExec =
         2, syscallJoin = 3, syscallCreate = 4, syscallOpen = 5, syscallRead =
         6, syscallWrite = 7, syscallClose = 8, syscallUnlink = 9;
@@ -605,6 +620,8 @@ public class UserProcess {
                 return handleOpen(a0);
             case syscallWrite:
                 return handleWrite(a0, a1, a2);
+            case syscallClose:
+                return handleClose(a0);
             case syscallUnlink:
                 return handleUnlink(a0);
             default:
