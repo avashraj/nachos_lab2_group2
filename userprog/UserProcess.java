@@ -431,6 +431,66 @@ public class UserProcess {
         return success ? 0 : -1;
     }
 
+    private int handleWrite(int fileDescriptor, int bufferAddress, int count) {
+        // Validate parameters
+        if (fileDescriptor < 0 || fileDescriptor >= 16 || count < 0) {
+            return -1;
+        }
+
+        if (bufferAddress < 0) {
+            return -1;
+        }
+
+        OpenFile file = myFileSlots[fileDescriptor];
+        if (file == null) {
+            return -1;
+        }
+
+        // Use page-sized buffer for efficient memory transfers
+        int pageSize = Processor.pageSize;
+        byte[] kernelBuffer = new byte[pageSize];
+
+        int totalBytesWritten = 0;
+        int remainingBytes = count;
+        int currentBufferAddress = bufferAddress;
+
+        while (remainingBytes > 0) {
+            int bytesToRead = Math.min(remainingBytes, pageSize);
+            int bytesRead = readVirtualMemory(
+                currentBufferAddress,
+                kernelBuffer,
+                0,
+                bytesToRead
+            );
+
+            // Check for read failure from user memory
+            if (bytesRead < bytesToRead) {
+                return -1;
+            }
+
+            int bytesWritten = file.write(kernelBuffer, 0, bytesRead);
+
+            // Check for write errors according to syscall.h
+            if (bytesWritten < 0 || bytesWritten < bytesRead) {
+                Lib.debug(
+                    dbgProcess,
+                    "handleWrite: File write error or partial write. Wrote=" +
+                    bytesWritten +
+                    ", Expected=" +
+                    bytesRead
+                );
+                return -1;
+            }
+
+            // If we reach here, the write was successful
+            totalBytesWritten += bytesWritten;
+            currentBufferAddress += bytesWritten;
+            remainingBytes -= bytesWritten;
+        }
+
+        return totalBytesWritten;
+    }
+
     private static final int syscallHalt = 0, syscallExit = 1, syscallExec =
         2, syscallJoin = 3, syscallCreate = 4, syscallOpen = 5, syscallRead =
         6, syscallWrite = 7, syscallClose = 8, syscallUnlink = 9;
@@ -504,6 +564,8 @@ public class UserProcess {
                 return handleExit(a0);
             case syscallCreate:
                 return handleCreate(a0);
+            case syscallWrite:
+                return handleWrite(a0, a1, a2);
             case syscallUnlink:
                 return handleUnlink(a0);
             default:
