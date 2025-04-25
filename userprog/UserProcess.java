@@ -531,7 +531,6 @@ public class UserProcess {
     /*
         Handle close syscall
     */
-
     private int handleClose(int fd) {
         if (fd < 0 || fd >= myFileSlots.length || myFileSlots[fd] == null) {
             return -1;
@@ -541,6 +540,35 @@ public class UserProcess {
         file.close();
         myFileSlots[fd] = null;
         return 0;
+    }
+
+    /*
+        Handle read syscall
+    */
+    private int handleRead(int slotNum, int virtaddr, int numBytes) {
+        if (
+            slotNum < 0 ||
+            slotNum >= myFileSlots.length ||
+            myFileSlots[slotNum] == null ||
+            numBytes < 0
+        ) {
+            return -1;
+        }
+
+        OpenFile file = myFileSlots[slotNum];
+        byte[] buffer = new byte[numBytes];
+
+        int readBytes = file.read(buffer, 0, numBytes);
+        if (readBytes < 0) {
+            return -1;
+        }
+
+        int writtenBytes = writeVirtualMemory(virtaddr, buffer, 0, readBytes);
+        if (writtenBytes < readBytes) {
+            return -1;
+        }
+
+        return writtenBytes;
     }
 
     private static final int syscallHalt = 0, syscallExit = 1, syscallExec =
@@ -618,6 +646,8 @@ public class UserProcess {
                 return handleCreate(a0);
             case syscallOpen:
                 return handleOpen(a0);
+            case syscallRead:
+                return handleRead(a0, a1, a2);
             case syscallWrite:
                 return handleWrite(a0, a1, a2);
             case syscallClose:
