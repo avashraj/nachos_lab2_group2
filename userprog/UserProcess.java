@@ -431,6 +431,43 @@ public class UserProcess {
         return success ? 0 : -1;
     }
 
+    /*
+        Handle open function call
+    */
+    private int handleOpen(int vaddr) {
+        // Read the filename from user memory
+        String filename = readVirtualMemoryString(vaddr, 256);
+
+        // Check if filename is valid
+        if (filename == null) {
+            return -1;
+        }
+
+        // Try to open the file (create=false since we're only opening existing files)
+        OpenFile file = ThreadedKernel.fileSystem.open(filename, false);
+
+        // Check if file was opened successfully
+        if (file == null) {
+            return -1;
+        }
+
+        // Find an available slot in the file descriptor table
+        for (int i = 0; i < myFileSlots.length; i++) {
+            if (myFileSlots[i] == null) {
+                // Found an available slot, store the file and return the descriptor
+                myFileSlots[i] = file;
+                return i;
+            }
+        }
+
+        // No available slots in the file table
+        file.close(); // Close the file since we can't use it
+        return -1;
+    }
+
+    /*
+        Handle write system Call
+    */
     private int handleWrite(int fileDescriptor, int bufferAddress, int count) {
         // Validate parameters
         if (fileDescriptor < 0 || fileDescriptor >= 16 || count < 0) {
@@ -564,6 +601,8 @@ public class UserProcess {
                 return handleExit(a0);
             case syscallCreate:
                 return handleCreate(a0);
+            case syscallOpen:
+                return handleOpen(a0);
             case syscallWrite:
                 return handleWrite(a0, a1, a2);
             case syscallUnlink:
